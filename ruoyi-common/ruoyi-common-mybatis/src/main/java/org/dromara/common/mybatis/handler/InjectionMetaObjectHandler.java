@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.reflection.MetaObject;
 import org.dromara.common.core.domain.model.LoginUser;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.utils.ObjectUtils;
 import org.dromara.common.mybatis.core.domain.BaseEntity;
 import org.dromara.common.satoken.utils.LoginHelper;
 
@@ -22,6 +23,11 @@ import java.util.Date;
 public class InjectionMetaObjectHandler implements MetaObjectHandler {
 
     /**
+     * 如果用户不存在默认注入-1代表无用户
+     */
+    private static final Long DEFAULT_USER_ID = -1L;
+
+    /**
      * 插入填充方法，用于在插入数据时自动填充实体对象中的创建时间、更新时间、创建人、更新人等信息
      *
      * @param metaObject 元对象，用于获取原始对象并进行填充
@@ -31,8 +37,7 @@ public class InjectionMetaObjectHandler implements MetaObjectHandler {
         try {
             if (ObjectUtil.isNotNull(metaObject) && metaObject.getOriginalObject() instanceof BaseEntity baseEntity) {
                 // 获取当前时间作为创建时间和更新时间，如果创建时间不为空，则使用创建时间，否则使用当前时间
-                Date current = ObjectUtil.isNotNull(baseEntity.getCreateTime())
-                    ? baseEntity.getCreateTime() : new Date();
+                Date current = ObjectUtils.notNull(baseEntity.getCreateTime(), new Date());
                 baseEntity.setCreateTime(current);
                 baseEntity.setUpdateTime(current);
 
@@ -44,8 +49,12 @@ public class InjectionMetaObjectHandler implements MetaObjectHandler {
                         // 填充创建人、更新人和创建部门信息
                         baseEntity.setCreateBy(userId);
                         baseEntity.setUpdateBy(userId);
-                        baseEntity.setCreateDept(ObjectUtil.isNotNull(baseEntity.getCreateDept())
-                            ? baseEntity.getCreateDept() : loginUser.getDeptId());
+                        baseEntity.setCreateDept(ObjectUtils.notNull(baseEntity.getCreateDept(), loginUser.getDeptId()));
+                    } else {
+                        // 填充创建人、更新人和创建部门信息
+                        baseEntity.setCreateBy(DEFAULT_USER_ID);
+                        baseEntity.setUpdateBy(DEFAULT_USER_ID);
+                        baseEntity.setCreateDept(ObjectUtils.notNull(baseEntity.getCreateDept(), DEFAULT_USER_ID));
                     }
                 }
             } else {
@@ -75,6 +84,8 @@ public class InjectionMetaObjectHandler implements MetaObjectHandler {
                 Long userId = LoginHelper.getUserId();
                 if (ObjectUtil.isNotNull(userId)) {
                     baseEntity.setUpdateBy(userId);
+                } else {
+                    baseEntity.setUpdateBy(DEFAULT_USER_ID);
                 }
             } else {
                 this.strictUpdateFill(metaObject, "updateTime", Date.class, new Date());
@@ -94,7 +105,6 @@ public class InjectionMetaObjectHandler implements MetaObjectHandler {
         try {
             loginUser = LoginHelper.getLoginUser();
         } catch (Exception e) {
-            log.warn("自动注入警告 => 用户未登录");
             return null;
         }
         return loginUser;

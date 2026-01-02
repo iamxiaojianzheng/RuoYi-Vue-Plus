@@ -2,10 +2,17 @@ package org.dromara.common.web.interceptor;
 
 import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.util.ArrayUtil;
+import cn.hutool.core.util.ObjectUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.StopWatch;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.web.filter.RepeatedlyRequestWrapper;
@@ -13,8 +20,10 @@ import org.springframework.http.MediaType;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.ModelAndView;
 
-import java.io.BufferedReader;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * web的调用时间统计拦截器
@@ -30,19 +39,25 @@ public class PlusWebInvokeTimeInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         String url = request.getMethod() + " " + request.getRequestURI();
-
         // 打印请求参数
         if (isJsonRequest(request)) {
             String jsonParam = "";
             if (request instanceof RepeatedlyRequestWrapper) {
-                BufferedReader reader = request.getReader();
-                jsonParam = IoUtil.read(reader);
+                jsonParam = IoUtil.read(request.getReader());
+                if (StringUtils.isNotBlank(jsonParam)) {
+                    ObjectMapper objectMapper = JsonUtils.getObjectMapper();
+                    JsonNode rootNode = objectMapper.readTree(jsonParam);
+                    removeSensitiveFields(rootNode, SystemConstants.EXCLUDE_PROPERTIES);
+                    jsonParam = rootNode.toString();
+                }
             }
             log.info("[PLUS]开始请求 => URL[{}],参数类型[json],参数:[{}]", url, jsonParam);
         } else {
             Map<String, String[]> parameterMap = request.getParameterMap();
             if (MapUtil.isNotEmpty(parameterMap)) {
-                String parameters = JsonUtils.toJsonString(parameterMap);
+                Map<String, String[]> map = new LinkedHashMap<>(parameterMap);
+                MapUtil.removeAny(map, SystemConstants.EXCLUDE_PROPERTIES);
+                String parameters = JsonUtils.toJsonString(map);
                 log.info("[PLUS]开始请求 => URL[{}],参数类型[param],参数:[{}]", url, parameters);
             } else {
                 log.info("[PLUS]开始请求 => URL[{}],无参数", url);
@@ -56,6 +71,30 @@ public class PlusWebInvokeTimeInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    private void removeSensitiveFields(JsonNode node, String[] excludeProperties) {
+        if (node == null) {
+            return;
+        }
+        if (node.isObject()) {
+            ObjectNode objectNode = (ObjectNode) node;
+            // 收集要删除的字段名（避免 ConcurrentModification）
+            Set<String> fieldsToRemove = new HashSet<>();
+            objectNode.fieldNames().forEachRemaining(fieldName -> {
+                if (ArrayUtil.contains(excludeProperties, fieldName)) {
+                    fieldsToRemove.add(fieldName);
+                }
+            });
+            fieldsToRemove.forEach(objectNode::remove);
+            // 递归处理子节点
+            objectNode.elements().forEachRemaining(child -> removeSensitiveFields(child, excludeProperties));
+        } else if (node.isArray()) {
+            ArrayNode arrayNode = (ArrayNode) node;
+            for (JsonNode child : arrayNode) {
+                removeSensitiveFields(child, excludeProperties);
+            }
+        }
+    }
+
     @Override
     public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Exception {
 
@@ -64,9 +103,11 @@ public class PlusWebInvokeTimeInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
         StopWatch stopWatch = KEY_CACHE.get();
-        stopWatch.stop();
-        log.info("[PLUS]结束请求 => URL[{}],耗时:[{}]毫秒", request.getMethod() + " " + request.getRequestURI(), stopWatch.getTime());
-        KEY_CACHE.remove();
+        if (ObjectUtil.isNotNull(stopWatch)) {
+            stopWatch.stop();
+            log.info("[PLUS]结束请求 => URL[{}],耗时:[{}]毫秒", request.getMethod() + " " + request.getRequestURI(), stopWatch.getDuration().toMillis());
+            KEY_CACHE.remove();
+        }
     }
 
     /**

@@ -16,7 +16,9 @@ import java.util.function.Function;
  *
  * @author Lion Li
  * @version 3.6.0 新增
+ * @deprecated redisson 新版本已经将队列功能标记删除 一些技术问题无法解决 建议搭建MQ使用
  */
+@Deprecated
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class QueueUtils {
 
@@ -174,12 +176,12 @@ public class QueueUtils {
      *
      * @param queueName 队列名
      * @param capacity  容量
-     * @param destroy   已存在是否销毁
+     * @param destroy   是否销毁
      */
     public static <T> boolean trySetBoundedQueueCapacity(String queueName, int capacity, boolean destroy) {
         RBoundedBlockingQueue<T> boundedBlockingQueue = CLIENT.getBoundedBlockingQueue(queueName);
-        if (boundedBlockingQueue.isExists() && destroy) {
-            destroyQueue(queueName);
+        if (destroy) {
+            boundedBlockingQueue.delete();
         }
         return boundedBlockingQueue.trySetCapacity(capacity);
     }

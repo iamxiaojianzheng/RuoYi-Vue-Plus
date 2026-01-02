@@ -1,11 +1,12 @@
 package org.dromara.common.encrypt.core;
 
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.ReflectUtil;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.io.Resources;
+import org.dromara.common.core.constant.Constants;
+import org.dromara.common.core.utils.ObjectUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.encrypt.annotation.EncryptField;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -17,7 +18,10 @@ import org.springframework.core.type.classreading.CachingMetadataReaderFactory;
 import org.springframework.util.ClassUtils;
 
 import java.lang.reflect.Field;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -34,7 +38,7 @@ public class EncryptorManager {
     /**
      * 缓存加密器
      */
-    Map<EncryptContext, IEncryptor> encryptorMap = new ConcurrentHashMap<>();
+    Map<Integer, IEncryptor> encryptorMap = new ConcurrentHashMap<>();
 
     /**
      * 类加密字段缓存
@@ -55,10 +59,7 @@ public class EncryptorManager {
      * 获取类加密字段缓存
      */
     public Set<Field> getFieldCache(Class<?> sourceClazz) {
-        if (ObjectUtil.isNotNull(fieldCache)) {
-            return fieldCache.get(sourceClazz);
-        }
-        return null;
+        return ObjectUtils.notNullGetter(fieldCache, f -> f.get(sourceClazz));
     }
 
     /**
@@ -67,11 +68,12 @@ public class EncryptorManager {
      * @param encryptContext 加密执行者需要的相关配置参数
      */
     public IEncryptor registAndGetEncryptor(EncryptContext encryptContext) {
-        if (encryptorMap.containsKey(encryptContext)) {
-            return encryptorMap.get(encryptContext);
+        int key = encryptContext.hashCode();
+        if (encryptorMap.containsKey(key)) {
+            return encryptorMap.get(key);
         }
         IEncryptor encryptor = ReflectUtil.newInstance(encryptContext.getAlgorithm().getClazz(), encryptContext);
-        encryptorMap.put(encryptContext, encryptor);
+        encryptorMap.put(key, encryptor);
         return encryptor;
     }
 
@@ -81,7 +83,7 @@ public class EncryptorManager {
      * @param encryptContext 加密执行者需要的相关配置参数
      */
     public void removeEncryptor(EncryptContext encryptContext) {
-        this.encryptorMap.remove(encryptContext);
+        this.encryptorMap.remove(encryptContext.hashCode());
     }
 
     /**
@@ -91,8 +93,12 @@ public class EncryptorManager {
      * @param encryptContext 加密相关的配置信息
      */
     public String encrypt(String value, EncryptContext encryptContext) {
+        if (StringUtils.startsWith(value, Constants.ENCRYPT_HEADER)) {
+            return value;
+        }
         IEncryptor encryptor = this.registAndGetEncryptor(encryptContext);
-        return encryptor.encrypt(value, encryptContext.getEncode());
+        String encrypt = encryptor.encrypt(value, encryptContext.getEncode());
+        return Constants.ENCRYPT_HEADER + encrypt;
     }
 
     /**
@@ -102,8 +108,12 @@ public class EncryptorManager {
      * @param encryptContext 加密相关的配置信息
      */
     public String decrypt(String value, EncryptContext encryptContext) {
+        if (!StringUtils.startsWith(value, Constants.ENCRYPT_HEADER)) {
+            return value;
+        }
         IEncryptor encryptor = this.registAndGetEncryptor(encryptContext);
-        return encryptor.decrypt(value);
+        String str = StringUtils.removeStart(value, Constants.ENCRYPT_HEADER);
+        return encryptor.decrypt(str);
     }
 
     /**

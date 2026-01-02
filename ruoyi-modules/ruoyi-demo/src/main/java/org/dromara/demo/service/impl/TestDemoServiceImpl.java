@@ -62,6 +62,8 @@ public class TestDemoServiceImpl implements ITestDemoService {
     private LambdaQueryWrapper<TestDemo> buildQueryWrapper(TestDemoBo bo) {
         Map<String, Object> params = bo.getParams();
         LambdaQueryWrapper<TestDemo> lqw = Wrappers.lambdaQuery();
+        lqw.eq(bo.getDeptId() != null, TestDemo::getDeptId, bo.getDeptId());
+        lqw.eq(bo.getUserId() != null, TestDemo::getUserId, bo.getUserId());
         lqw.like(StringUtils.isNotBlank(bo.getTestKey()), TestDemo::getTestKey, bo.getTestKey());
         lqw.eq(StringUtils.isNotBlank(bo.getValue()), TestDemo::getValue, bo.getValue());
         lqw.between(params.get("beginCreateTime") != null && params.get("endCreateTime") != null,
@@ -101,7 +103,7 @@ public class TestDemoServiceImpl implements ITestDemoService {
     public Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid) {
         if (isValid) {
             // 做一些业务上的校验,判断是否需要校验
-            List<TestDemo> list = baseMapper.selectBatchIds(ids);
+            List<TestDemo> list = baseMapper.selectByIds(ids);
             if (list.size() != ids.size()) {
                 throw new ServiceException("您没有删除权限!");
             }

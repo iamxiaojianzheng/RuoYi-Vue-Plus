@@ -1,10 +1,9 @@
 package org.dromara.system.service;
 
-import org.dromara.system.domain.SysClient;
-import org.dromara.system.domain.vo.SysClientVo;
-import org.dromara.system.domain.bo.SysClientBo;
-import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.mybatis.core.page.PageQuery;
+import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.system.domain.bo.SysClientBo;
+import org.dromara.system.domain.vo.SysClientVo;
 
 import java.util.Collection;
 import java.util.List;
@@ -50,11 +49,18 @@ public interface ISysClientService {
     /**
      * 修改状态
      */
-    int updateUserStatus(String clientId, String status);
+    int updateClientStatus(String clientId, String status);
 
     /**
      * 校验并批量删除客户端管理信息
      */
     Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid);
 
+    /**
+     * 校验客户端key是否唯一
+     *
+     * @param client 客户端信息
+     * @return 结果
+     */
+    boolean checkClickKeyUnique(SysClientBo client);
 }

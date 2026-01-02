@@ -59,7 +59,7 @@ public class SysTenantController extends BaseController {
      */
     @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:tenant:export")
-    @Log(title = "租户", businessType = BusinessType.EXPORT)
+    @Log(title = "租户管理", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
     public void export(SysTenantBo bo, HttpServletResponse response) {
         List<SysTenantVo> list = tenantService.queryList(bo);
@@ -85,7 +85,7 @@ public class SysTenantController extends BaseController {
     @ApiEncrypt
     @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:tenant:add")
-    @Log(title = "租户", businessType = BusinessType.INSERT)
+    @Log(title = "租户管理", businessType = BusinessType.INSERT)
     @Lock4j
     @RepeatSubmit()
     @PostMapping()
@@ -101,7 +101,7 @@ public class SysTenantController extends BaseController {
      */
     @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:tenant:edit")
-    @Log(title = "租户", businessType = BusinessType.UPDATE)
+    @Log(title = "租户管理", businessType = BusinessType.UPDATE)
     @RepeatSubmit()
     @PutMapping()
     public R<Void> edit(@Validated(EditGroup.class) @RequestBody SysTenantBo bo) {
@@ -117,7 +117,8 @@ public class SysTenantController extends BaseController {
      */
     @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:tenant:edit")
-    @Log(title = "租户", businessType = BusinessType.UPDATE)
+    @Log(title = "租户管理", businessType = BusinessType.UPDATE)
+    @RepeatSubmit()
     @PutMapping("/changeStatus")
     public R<Void> changeStatus(@RequestBody SysTenantBo bo) {
         tenantService.checkTenantAllowed(bo.getTenantId());
@@ -131,7 +132,7 @@ public class SysTenantController extends BaseController {
      */
     @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:tenant:remove")
-    @Log(title = "租户", businessType = BusinessType.DELETE)
+    @Log(title = "租户管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
     public R<Void> remove(@NotEmpty(message = "主键不能为空")
                           @PathVariable Long[] ids) {
@@ -169,11 +170,42 @@ public class SysTenantController extends BaseController {
      */
     @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:tenant:edit")
-    @Log(title = "租户", businessType = BusinessType.UPDATE)
+    @Log(title = "租户管理", businessType = BusinessType.UPDATE)
+    @Lock4j
     @GetMapping("/syncTenantPackage")
     public R<Void> syncTenantPackage(@NotBlank(message = "租户ID不能为空") String tenantId,
                                      @NotNull(message = "套餐ID不能为空") Long packageId) {
         return toAjax(TenantHelper.ignore(() -> tenantService.syncTenantPackage(tenantId, packageId)));
+    }
+
+    /**
+     * 同步租户字典
+     */
+    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
+    @Log(title = "租户管理", businessType = BusinessType.INSERT)
+    @Lock4j
+    @GetMapping("/syncTenantDict")
+    public R<Void> syncTenantDict() {
+        if (!TenantHelper.isEnable()) {
+            return R.fail("当前未开启租户模式");
+        }
+        tenantService.syncTenantDict();
+        return R.ok("同步租户字典成功");
+    }
+
+    /**
+     * 同步租户参数配置
+     */
+    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
+    @Log(title = "租户管理", businessType = BusinessType.INSERT)
+    @Lock4j
+    @GetMapping("/syncTenantConfig")
+    public R<Void> syncTenantConfig() {
+        if (!TenantHelper.isEnable()) {
+            return R.fail("当前未开启租户模式");
+        }
+        tenantService.syncTenantConfig();
+        return R.ok("同步租户参数配置成功");
     }
 
 }

@@ -13,6 +13,7 @@ import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.AfterThrowing;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.domain.model.LoginUser;
 import org.dromara.common.core.utils.ServletUtils;
 import org.dromara.common.core.utils.SpringUtils;
@@ -27,9 +28,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Collection;
-import java.util.Map;
-import java.util.StringJoiner;
+import java.util.*;
 
 /**
  * 操作日志记录处理
@@ -40,12 +39,6 @@ import java.util.StringJoiner;
 @Aspect
 @AutoConfiguration
 public class LogAspect {
-
-    /**
-     * 排除敏感属性字段
-     */
-    public static final String[] EXCLUDE_PROPERTIES = { "password", "oldPassword", "newPassword", "confirmPassword" };
-
 
     /**
      * 计时 key
@@ -100,7 +93,7 @@ public class LogAspect {
 
             if (e != null) {
                 operLog.setStatus(BusinessStatus.FAIL.ordinal());
-                operLog.setErrorMsg(StringUtils.substring(e.getMessage(), 0, 2000));
+                operLog.setErrorMsg(StringUtils.substring(e.getMessage(), 0, 3800));
             }
             // 设置方法名称
             String className = joinPoint.getTarget().getClass().getName();
@@ -113,13 +106,12 @@ public class LogAspect {
             // 设置消耗时间
             StopWatch stopWatch = KEY_CACHE.get();
             stopWatch.stop();
-            operLog.setCostTime(stopWatch.getTime());
+            operLog.setCostTime(stopWatch.getDuration().toMillis());
             // 发布事件保存数据库
             SpringUtils.context().publishEvent(operLog);
         } catch (Exception exp) {
             // 记录本地异常日志
             log.error("异常信息:{}", exp.getMessage());
-            exp.printStackTrace();
         } finally {
             KEY_CACHE.remove();
         }
@@ -146,7 +138,7 @@ public class LogAspect {
         }
         // 是否需要保存response，参数和值
         if (log.isSaveResponseData() && ObjectUtil.isNotNull(jsonResult)) {
-            operLog.setJsonResult(StringUtils.substring(JsonUtils.toJsonString(jsonResult), 0, 2000));
+            operLog.setJsonResult(StringUtils.substring(JsonUtils.toJsonString(jsonResult), 0, 3800));
         }
     }
 
@@ -159,14 +151,13 @@ public class LogAspect {
     private void setRequestValue(JoinPoint joinPoint, OperLogEvent operLog, String[] excludeParamNames) throws Exception {
         Map<String, String> paramsMap = ServletUtils.getParamMap(ServletUtils.getRequest());
         String requestMethod = operLog.getRequestMethod();
-        if (MapUtil.isEmpty(paramsMap)
-                && HttpMethod.PUT.name().equals(requestMethod) || HttpMethod.POST.name().equals(requestMethod)) {
+        if (MapUtil.isEmpty(paramsMap) && StringUtils.equalsAny(requestMethod, HttpMethod.PUT.name(), HttpMethod.POST.name(), HttpMethod.DELETE.name())) {
             String params = argsArrayToString(joinPoint.getArgs(), excludeParamNames);
-            operLog.setOperParam(StringUtils.substring(params, 0, 2000));
+            operLog.setOperParam(StringUtils.substring(params, 0, 3800));
         } else {
-            MapUtil.removeAny(paramsMap, EXCLUDE_PROPERTIES);
+            MapUtil.removeAny(paramsMap, SystemConstants.EXCLUDE_PROPERTIES);
             MapUtil.removeAny(paramsMap, excludeParamNames);
-            operLog.setOperParam(StringUtils.substring(JsonUtils.toJsonString(paramsMap), 0, 2000));
+            operLog.setOperParam(StringUtils.substring(JsonUtils.toJsonString(paramsMap), 0, 3800));
         }
     }
 
@@ -178,14 +169,28 @@ public class LogAspect {
         if (ArrayUtil.isEmpty(paramsArray)) {
             return params.toString();
         }
+        String[] exclude = ArrayUtil.addAll(excludeParamNames, SystemConstants.EXCLUDE_PROPERTIES);
         for (Object o : paramsArray) {
             if (ObjectUtil.isNotNull(o) && !isFilterObject(o)) {
-                String str = JsonUtils.toJsonString(o);
-                Dict dict = JsonUtils.parseMap(str);
-                if (MapUtil.isNotEmpty(dict)) {
-                    MapUtil.removeAny(dict, EXCLUDE_PROPERTIES);
-                    MapUtil.removeAny(dict, excludeParamNames);
-                    str = JsonUtils.toJsonString(dict);
+                String str = "";
+                if (o instanceof List<?> list) {
+                    List<Dict> list1 = new ArrayList<>();
+                    for (Object obj : list) {
+                        String str1 = JsonUtils.toJsonString(obj);
+                        Dict dict = JsonUtils.parseMap(str1);
+                        if (MapUtil.isNotEmpty(dict)) {
+                            MapUtil.removeAny(dict, exclude);
+                            list1.add(dict);
+                        }
+                    }
+                    str = JsonUtils.toJsonString(list1);
+                } else {
+                    str = JsonUtils.toJsonString(o);
+                    Dict dict = JsonUtils.parseMap(str);
+                    if (MapUtil.isNotEmpty(dict)) {
+                        MapUtil.removeAny(dict, exclude);
+                        str = JsonUtils.toJsonString(dict);
+                    }
                 }
                 params.add(str);
             }

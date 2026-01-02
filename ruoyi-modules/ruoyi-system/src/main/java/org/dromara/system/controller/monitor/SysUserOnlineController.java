@@ -10,6 +10,7 @@ import org.dromara.common.core.domain.R;
 import org.dromara.common.core.domain.dto.UserOnlineDTO;
 import org.dromara.common.core.utils.StreamUtils;
 import org.dromara.common.core.utils.StringUtils;
+import org.dromara.common.idempotent.annotation.RepeatSubmit;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
@@ -19,6 +20,7 @@ import org.dromara.system.domain.SysUserOnline;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -43,7 +45,7 @@ public class SysUserOnlineController extends BaseController {
     @GetMapping("/list")
     public TableDataInfo<SysUserOnline> list(String ipaddr, String userName) {
         // 获取所有未过期的 token
-        List<String> keys = StpUtil.searchTokenValue("", 0, -1, false);
+        Collection<String> keys = RedisUtils.keys(CacheConstants.ONLINE_TOKEN_KEY + "*");
         List<UserOnlineDTO> userOnlineDTOList = new ArrayList<>();
         for (String key : keys) {
             String token = StringUtils.substringAfterLast(key, ":");
@@ -80,6 +82,7 @@ public class SysUserOnlineController extends BaseController {
      */
     @SaCheckPermission("monitor:online:forceLogout")
     @Log(title = "在线用户", businessType = BusinessType.FORCE)
+    @RepeatSubmit()
     @DeleteMapping("/{tokenId}")
     public R<Void> forceLogout(@PathVariable String tokenId) {
         try {
@@ -113,7 +116,8 @@ public class SysUserOnlineController extends BaseController {
      * @param tokenId token值
      */
     @Log(title = "在线设备", businessType = BusinessType.FORCE)
-    @PostMapping("/{tokenId}")
+    @RepeatSubmit()
+    @DeleteMapping("/myself/{tokenId}")
     public R<Void> remove(@PathVariable("tokenId") String tokenId) {
         try {
             // 获取指定账号 id 的 token 集合

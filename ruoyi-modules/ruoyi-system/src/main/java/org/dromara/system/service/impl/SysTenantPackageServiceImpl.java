@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.constant.TenantConstants;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
@@ -59,7 +59,7 @@ public class SysTenantPackageServiceImpl implements ISysTenantPackageService {
     @Override
     public List<SysTenantPackageVo> selectList() {
         return baseMapper.selectVoList(new LambdaQueryWrapper<SysTenantPackage>()
-                .eq(SysTenantPackage::getStatus, TenantConstants.NORMAL));
+                .eq(SysTenantPackage::getStatus, SystemConstants.NORMAL));
     }
 
     /**
@@ -88,11 +88,7 @@ public class SysTenantPackageServiceImpl implements ISysTenantPackageService {
         SysTenantPackage add = MapstructUtils.convert(bo, SysTenantPackage.class);
         // 保存菜单id
         List<Long> menuIds = Arrays.asList(bo.getMenuIds());
-        if (CollUtil.isNotEmpty(menuIds)) {
-            add.setMenuIds(StringUtils.join(menuIds, ", "));
-        } else {
-            add.setMenuIds("");
-        }
+        add.setMenuIds(CollUtil.isNotEmpty(menuIds) ? StringUtils.joinComma(menuIds) : "");
         boolean flag = baseMapper.insert(add) > 0;
         if (flag) {
             bo.setPackageId(add.getPackageId());
@@ -109,11 +105,7 @@ public class SysTenantPackageServiceImpl implements ISysTenantPackageService {
         SysTenantPackage update = MapstructUtils.convert(bo, SysTenantPackage.class);
         // 保存菜单id
         List<Long> menuIds = Arrays.asList(bo.getMenuIds());
-        if (CollUtil.isNotEmpty(menuIds)) {
-            update.setMenuIds(StringUtils.join(menuIds, ", "));
-        } else {
-            update.setMenuIds("");
-        }
+        update.setMenuIds(CollUtil.isNotEmpty(menuIds) ? StringUtils.joinComma(menuIds) : "");
         return baseMapper.updateById(update) > 0;
     }
 

@@ -1,17 +1,22 @@
 package org.dromara.demo.service.impl;
 
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.idev.excel.write.metadata.WriteSheet;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.enums.UserStatus;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.utils.StreamUtils;
+import org.dromara.common.core.utils.file.FileUtils;
 import org.dromara.common.excel.core.DropDownOptions;
 import org.dromara.common.excel.utils.ExcelUtil;
+import org.dromara.common.excel.utils.ExcelWriterWrapper;
 import org.dromara.demo.domain.vo.ExportDemoVo;
 import org.dromara.demo.service.IExportExcelService;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +39,7 @@ public class ExportExcelServiceImpl implements IExportExcelService {
             // 模拟数据库中的一条数据
             ExportDemoVo everyRowData = new ExportDemoVo();
             everyRowData.setNickName("用户-" + i);
-            everyRowData.setUserStatus(UserStatus.OK.getCode());
+            everyRowData.setUserStatus(SystemConstants.NORMAL);
             everyRowData.setGender("1");
             everyRowData.setPhoneNumber(String.format("175%08d", i));
             everyRowData.setEmail(String.format("175%08d", i) + "@163.com");
@@ -121,8 +126,9 @@ public class ExportExcelServiceImpl implements IExportExcelService {
         List<DemoCityData> provinceList = new ArrayList<>();
 
         // 实际业务中一般采用数据库读取的形式，这里直接拼接创建
-        provinceList.add(new DemoCityData(0, null, "安徽省"));
-        provinceList.add(new DemoCityData(1, null, "江苏省"));
+        provinceList.add(new DemoCityData(0, null, "P100000"));
+        provinceList.add(new DemoCityData(1, null, "P200000"));
+        provinceList.add(new DemoCityData(2, null, "P300000"));
 
         return provinceList;
     }
@@ -137,11 +143,11 @@ public class ExportExcelServiceImpl implements IExportExcelService {
         List<DemoCityData> cityList = new ArrayList<>();
 
         // 实际业务中一般采用数据库读取的形式，这里直接拼接创建
-        cityList.add(new DemoCityData(0, 0, "合肥市"));
-        cityList.add(new DemoCityData(1, 0, "芜湖市"));
-        cityList.add(new DemoCityData(2, 1, "南京市"));
-        cityList.add(new DemoCityData(3, 1, "无锡市"));
-        cityList.add(new DemoCityData(4, 1, "徐州市"));
+        cityList.add(new DemoCityData(0, 0, "C110000"));
+        cityList.add(new DemoCityData(1, 0, "C120000"));
+        cityList.add(new DemoCityData(2, 1, "C210000"));
+        cityList.add(new DemoCityData(3, 1, "C220000"));
+        cityList.add(new DemoCityData(4, 1, "C230000"));
 
         selectParentData(provinceList, cityList);
 
@@ -157,17 +163,29 @@ public class ExportExcelServiceImpl implements IExportExcelService {
     private List<DemoCityData> getAreaList(List<DemoCityData> cityList) {
         List<DemoCityData> areaList = new ArrayList<>();
 
+        int minCount = 500;
+        int maxCount = 10000;
+
         // 实际业务中一般采用数据库读取的形式，这里直接拼接创建
-        areaList.add(new DemoCityData(0, 0, "瑶海区"));
-        areaList.add(new DemoCityData(1, 0, "庐江区"));
-        areaList.add(new DemoCityData(2, 1, "南宁县"));
-        areaList.add(new DemoCityData(3, 1, "镜湖区"));
-        areaList.add(new DemoCityData(4, 2, "玄武区"));
-        areaList.add(new DemoCityData(5, 2, "秦淮区"));
-        areaList.add(new DemoCityData(6, 3, "宜兴市"));
-        areaList.add(new DemoCityData(7, 3, "新吴区"));
-        areaList.add(new DemoCityData(8, 4, "鼓楼区"));
-        areaList.add(new DemoCityData(9, 4, "丰县"));
+        for (int i = 0; i < RandomUtil.randomInt(minCount, maxCount); i++) {
+            areaList.add(new DemoCityData(areaList.size(), 0, String.format("A11%04d", i)));
+        }
+
+        for (int i = 0; i < RandomUtil.randomInt(minCount, maxCount); i++) {
+            areaList.add(new DemoCityData(areaList.size(), 1, String.format("A12%04d", i)));
+        }
+
+        for (int i = 0; i < RandomUtil.randomInt(minCount, maxCount); i++) {
+            areaList.add(new DemoCityData(areaList.size(), 2, String.format("A21%04d", i)));
+        }
+
+        for (int i = 0; i < RandomUtil.randomInt(minCount, maxCount); i++) {
+            areaList.add(new DemoCityData(areaList.size(), 3, String.format("A22%04d", i)));
+        }
+
+        for (int i = 0; i < RandomUtil.randomInt(minCount, maxCount); i++) {
+            areaList.add(new DemoCityData(areaList.size(), 4, String.format("A23%04d", i)));
+        }
 
         selectParentData(cityList, areaList);
 
@@ -218,5 +236,62 @@ public class ExportExcelServiceImpl implements IExportExcelService {
             this.pid = pid;
             this.name = name;
         }
+    }
+
+
+    @Override
+    public void customExport(HttpServletResponse response) throws IOException {
+        String filename = ExcelUtil.encodingFilename("自定义导出");
+        FileUtils.setAttachmentResponseHeader(response, filename);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8");
+
+        ExcelUtil.exportExcel(ExportDemoVo.class, response.getOutputStream(), wrapper -> {
+            // 创建表格数据，业务中一般通过数据库查询
+            List<ExportDemoVo> excelDataList = new ArrayList<>();
+            for (int i = 0; i < 30; i++) {
+                // 模拟数据库中的一条数据
+                ExportDemoVo everyRowData = new ExportDemoVo();
+                everyRowData.setNickName("用户-" + i);
+                everyRowData.setUserStatus(SystemConstants.NORMAL);
+                everyRowData.setGender("1");
+                everyRowData.setPhoneNumber(String.format("175%08d", i));
+                everyRowData.setEmail(String.format("175%08d", i) + "@163.com");
+                everyRowData.setProvinceId(i);
+                everyRowData.setCityId(i);
+                everyRowData.setAreaId(i);
+                excelDataList.add(everyRowData);
+            }
+
+            // 创建表格
+            WriteSheet sheet = ExcelWriterWrapper.sheetBuilder("自定义导出demo")
+                // 合并单元格
+                // .registerWriteHandler(new CellMergeStrategy(excelDataList, true))
+                .build();
+
+
+            wrapper.write(excelDataList, sheet);
+
+            List<ExportDemoVo> excelDataList2 = new ArrayList<>();
+            for (int i = 0; i < 20; i++) {
+                int index = 1000 + i;
+                // 模拟数据库中的一条数据
+                ExportDemoVo everyRowData = new ExportDemoVo();
+                everyRowData.setNickName("用户-" + index);
+                everyRowData.setUserStatus(SystemConstants.NORMAL);
+                everyRowData.setGender("1");
+                everyRowData.setPhoneNumber(String.format("175%08d", index));
+                everyRowData.setEmail(String.format("175%08d", index) + "@163.com");
+                everyRowData.setProvinceId(index);
+                everyRowData.setCityId(index);
+                everyRowData.setAreaId(index);
+                excelDataList2.add(everyRowData);
+            }
+
+            wrapper.write(excelDataList2, sheet);
+
+            // 或者在同一个excel中创建多个表格
+            // WriteSheet sheet2 = ExcelWriterWrapper.sheetBuilder("自定义导出demo2").build();
+            // wrapper.write(excelDataList2, sheet2);
+        });
     }
 }

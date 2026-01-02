@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.plugins.InterceptorIgnoreHelper;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.dromara.common.core.utils.reflect.ReflectUtils;
+import org.dromara.common.mybatis.annotation.DataPermission;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,6 +29,33 @@ public class DataPermissionHelper {
     private static final String DATA_PERMISSION_KEY = "data:permission";
 
     private static final ThreadLocal<Stack<Integer>> REENTRANT_IGNORE = ThreadLocal.withInitial(Stack::new);
+
+    private static final ThreadLocal<DataPermission> PERMISSION_CACHE = new ThreadLocal<>();
+
+    /**
+     * 获取当前执行mapper权限注解
+     *
+     * @return 返回当前执行mapper权限注解
+     */
+    public static DataPermission getPermission() {
+        return PERMISSION_CACHE.get();
+    }
+
+    /**
+     * 设置当前执行mapper权限注解
+     *
+     * @param dataPermission   数据权限注解
+     */
+    public static void setPermission(DataPermission dataPermission) {
+        PERMISSION_CACHE.set(dataPermission);
+    }
+
+    /**
+     * 删除当前执行mapper权限注解
+     */
+    public static void removePermission() {
+        PERMISSION_CACHE.remove();
+    }
 
     /**
      * 从上下文中获取指定键的变量值，并将其转换为指定的类型
@@ -84,7 +112,7 @@ public class DataPermissionHelper {
     /**
      * 开启忽略数据权限(开启后需手动调用 {@link #disableIgnore()} 关闭)
      */
-    public static void enableIgnore() {
+    private static void enableIgnore() {
         IgnoreStrategy ignoreStrategy = getIgnoreStrategy();
         if (ObjectUtil.isNull(ignoreStrategy)) {
             InterceptorIgnoreHelper.handle(IgnoreStrategy.builder().dataPermission(true).build());
@@ -98,7 +126,7 @@ public class DataPermissionHelper {
     /**
      * 关闭忽略数据权限
      */
-    public static void disableIgnore() {
+    private static void disableIgnore() {
         IgnoreStrategy ignoreStrategy = getIgnoreStrategy();
         if (ObjectUtil.isNotNull(ignoreStrategy)) {
             boolean noOtherIgnoreStrategy = !Boolean.TRUE.equals(ignoreStrategy.getDynamicTableName())

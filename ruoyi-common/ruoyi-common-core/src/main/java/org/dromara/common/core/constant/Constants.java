@@ -68,14 +68,14 @@ public interface Constants {
     Integer CAPTCHA_EXPIRATION = 2;
 
     /**
-     * 令牌
-     */
-    String TOKEN = "token";
-
-    /**
-     * 顶级部门id
+     * 顶级父级id
      */
     Long TOP_PARENT_ID = 0L;
+
+    /**
+     * 加密头
+     */
+    String ENCRYPT_HEADER = "ENC_";
 
 }
 

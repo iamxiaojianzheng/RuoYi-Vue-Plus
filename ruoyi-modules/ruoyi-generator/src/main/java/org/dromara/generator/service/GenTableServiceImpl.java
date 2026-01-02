@@ -8,8 +8,6 @@ import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +27,7 @@ import org.dromara.common.core.utils.file.FileUtils;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.common.satoken.utils.LoginHelper;
+import org.dromara.common.mybatis.utils.IdGeneratorUtil;
 import org.dromara.generator.constant.GenConstants;
 import org.dromara.generator.domain.GenTable;
 import org.dromara.generator.domain.GenTableColumn;
@@ -62,9 +60,8 @@ public class GenTableServiceImpl implements IGenTableService {
 
     private final GenTableMapper baseMapper;
     private final GenTableColumnMapper genTableColumnMapper;
-    private final IdentifierGenerator identifierGenerator;
 
-    private static final String[] TABLE_IGNORE = new String[]{"sj_", "act_", "flw_", "gen_"};
+    private static final String[] TABLE_IGNORE = new String[]{"sj_", "flow_", "gen_"};
 
     /**
      * 查询业务字段列表
@@ -106,7 +103,8 @@ public class GenTableServiceImpl implements IGenTableService {
             .like(StringUtils.isNotBlank(genTable.getTableName()), "lower(table_name)", StringUtils.lowerCase(genTable.getTableName()))
             .like(StringUtils.isNotBlank(genTable.getTableComment()), "lower(table_comment)", StringUtils.lowerCase(genTable.getTableComment()))
             .between(params.get("beginTime") != null && params.get("endTime") != null,
-                "create_time", params.get("beginTime"), params.get("endTime"));
+                "create_time", params.get("beginTime"), params.get("endTime"))
+            .orderByDesc("update_time");
         return wrapper;
     }
 
@@ -137,7 +135,7 @@ public class GenTableServiceImpl implements IGenTableService {
         }
         // 过滤并转换表格数据
         List<GenTable> tables = tablesMap.values().stream()
-            .filter(x -> !StringUtils.containsAnyIgnoreCase(x.getName(), TABLE_IGNORE))
+            .filter(x -> !StringUtils.startWithAnyIgnoreCase(x.getName(), TABLE_IGNORE))
             .filter(x -> {
                 if (CollUtil.isEmpty(tableNames)) {
                     return true;
@@ -162,16 +160,13 @@ public class GenTableServiceImpl implements IGenTableService {
                 GenTable gen = new GenTable();
                 gen.setTableName(x.getName());
                 gen.setTableComment(x.getComment());
-                gen.setCreateTime(x.getCreateTime());
+                // postgresql的表元数据没有创建时间这个东西(好奇葩) 只能new Date代替
+                gen.setCreateTime(ObjectUtil.defaultIfNull(x.getCreateTime(), new Date()));
                 gen.setUpdateTime(x.getUpdateTime());
                 return gen;
-            }).toList();
-
-        IPage<GenTable> page = pageQuery.build();
-        page.setTotal(tables.size());
-        // 手动分页 set数据
-        page.setRecords(CollUtil.page((int) page.getCurrent() - 1, (int) page.getSize(), tables));
-        return TableDataInfo.build(page);
+            }).sorted(Comparator.comparing(GenTable::getCreateTime).reversed())
+            .toList();
+        return TableDataInfo.build(tables, pageQuery.build());
     }
 
     /**
@@ -192,7 +187,7 @@ public class GenTableServiceImpl implements IGenTableService {
         }
 
         List<Table<?>> tableList = tablesMap.values().stream()
-            .filter(x -> !StringUtils.containsAnyIgnoreCase(x.getName(), TABLE_IGNORE))
+            .filter(x -> !StringUtils.startWithAnyIgnoreCase(x.getName(), TABLE_IGNORE))
             .filter(x -> tableNameSet.contains(x.getName())).toList();
 
         if (CollUtil.isEmpty(tableList)) {
@@ -259,11 +254,10 @@ public class GenTableServiceImpl implements IGenTableService {
     @DSTransactional
     @Override
     public void importGenTable(List<GenTable> tableList, String dataName) {
-        Long operId = LoginHelper.getUserId();
         try {
             for (GenTable table : tableList) {
                 String tableName = table.getTableName();
-                GenUtils.initTable(table, operId);
+                GenUtils.initTable(table);
                 table.setDataName(dataName);
                 int row = baseMapper.insert(table);
                 if (row > 0) {
@@ -294,17 +288,21 @@ public class GenTableServiceImpl implements IGenTableService {
     @DS("#dataName")
     @Override
     public List<GenTableColumn> selectDbTableColumnsByName(String tableName, String dataName) {
-        LinkedHashMap<String, Column> columns = ServiceProxy.metadata().columns(tableName);
+        Table<?> table = ServiceProxy.metadata().table(tableName);
+        if (ObjectUtil.isNull(table)) {
+            return new ArrayList<>();
+        }
+        LinkedHashMap<String, Column> columns = table.getColumns();
         List<GenTableColumn> tableColumns = new ArrayList<>();
         columns.forEach((columnName, column) -> {
             GenTableColumn tableColumn = new GenTableColumn();
-            tableColumn.setIsPk(String.valueOf(column.isPrimaryKey()));
+            tableColumn.setIsPk(column.isPrimaryKey() ? "1" : "0");
             tableColumn.setColumnName(column.getName());
             tableColumn.setColumnComment(column.getComment());
-            tableColumn.setColumnType(column.getTypeName().toLowerCase());
+            tableColumn.setColumnType(column.getOriginType().toLowerCase());
             tableColumn.setSort(column.getPosition());
-            tableColumn.setIsRequired(column.isNullable() == 0 ? "1" : "0");
-            tableColumn.setIsIncrement(column.isAutoIncrement() == -1 ? "0" : "1");
+            tableColumn.setIsRequired(column.isNullable() ? "0" : "1");
+            tableColumn.setIsIncrement(column.isAutoIncrement() ? "1" : "0");
             tableColumns.add(tableColumn);
         });
         return tableColumns;
@@ -323,7 +321,7 @@ public class GenTableServiceImpl implements IGenTableService {
         GenTable table = baseMapper.selectGenTableById(tableId);
         List<Long> menuIds = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
-            menuIds.add(identifierGenerator.nextId(null).longValue());
+            menuIds.add(IdGeneratorUtil.nextLongId());
         }
         table.setMenuIds(menuIds);
         // 设置主键列信息
@@ -469,7 +467,7 @@ public class GenTableServiceImpl implements IGenTableService {
         GenTable table = baseMapper.selectGenTableById(tableId);
         List<Long> menuIds = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
-            menuIds.add(identifierGenerator.nextId(null).longValue());
+            menuIds.add(IdGeneratorUtil.nextLongId());
         }
         table.setMenuIds(menuIds);
         // 设置主键列信息
@@ -548,7 +546,7 @@ public class GenTableServiceImpl implements IGenTableService {
             String treeCode = paramsObj.getStr(GenConstants.TREE_CODE);
             String treeParentCode = paramsObj.getStr(GenConstants.TREE_PARENT_CODE);
             String treeName = paramsObj.getStr(GenConstants.TREE_NAME);
-            String parentMenuId = paramsObj.getStr(GenConstants.PARENT_MENU_ID);
+            Long parentMenuId = paramsObj.getLong(GenConstants.PARENT_MENU_ID);
             String parentMenuName = paramsObj.getStr(GenConstants.PARENT_MENU_NAME);
 
             genTable.setTreeCode(treeCode);

@@ -1,6 +1,7 @@
 package org.dromara.common.tenant.helper;
 
-import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.context.SaHolder;
+import cn.dev33.satoken.context.model.SaStorage;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.util.ObjectUtil;
@@ -54,7 +55,7 @@ public class TenantHelper {
     /**
      * 开启忽略租户(开启后需手动调用 {@link #disableIgnore()} 关闭)
      */
-    public static void enableIgnore() {
+    private static void enableIgnore() {
         IgnoreStrategy ignoreStrategy = getIgnoreStrategy();
         if (ObjectUtil.isNull(ignoreStrategy)) {
             InterceptorIgnoreHelper.handle(IgnoreStrategy.builder().tenantLine(true).build());
@@ -68,7 +69,7 @@ public class TenantHelper {
     /**
      * 关闭忽略租户
      */
-    public static void disableIgnore() {
+    private static void disableIgnore() {
         IgnoreStrategy ignoreStrategy = getIgnoreStrategy();
         if (ObjectUtil.isNotNull(ignoreStrategy)) {
             boolean noOtherIgnoreStrategy = !Boolean.TRUE.equals(ignoreStrategy.getDynamicTableName())
@@ -130,12 +131,13 @@ public class TenantHelper {
         if (!isEnable()) {
             return;
         }
-        if (!isLogin() || !global) {
+        if (!LoginHelper.isLogin() || !global) {
             TEMP_DYNAMIC_TENANT.set(tenantId);
             return;
         }
         String cacheKey = DYNAMIC_TENANT_KEY + ":" + LoginHelper.getUserId();
         RedisUtils.setCacheObject(cacheKey, tenantId);
+        SaHolder.getStorage().set(cacheKey, tenantId);
     }
 
     /**
@@ -147,7 +149,7 @@ public class TenantHelper {
         if (!isEnable()) {
             return null;
         }
-        if (!isLogin()) {
+        if (!LoginHelper.isLogin()) {
             return TEMP_DYNAMIC_TENANT.get();
         }
         // 如果线程内有值 优先返回
@@ -155,8 +157,15 @@ public class TenantHelper {
         if (StringUtils.isNotBlank(tenantId)) {
             return tenantId;
         }
+        SaStorage storage = SaHolder.getStorage();
         String cacheKey = DYNAMIC_TENANT_KEY + ":" + LoginHelper.getUserId();
+        tenantId = storage.getString(cacheKey);
+        // 如果为 -1 说明已经查过redis并且不存在值 则直接返回null
+        if (StringUtils.isNotBlank(tenantId)) {
+            return tenantId.equals("-1") ? null : tenantId;
+        }
         tenantId = RedisUtils.getCacheObject(cacheKey);
+        storage.set(cacheKey, StringUtils.isBlank(tenantId) ? "-1" : tenantId);
         return tenantId;
     }
 
@@ -167,13 +176,14 @@ public class TenantHelper {
         if (!isEnable()) {
             return;
         }
-        if (!isLogin()) {
+        if (!LoginHelper.isLogin()) {
             TEMP_DYNAMIC_TENANT.remove();
             return;
         }
         TEMP_DYNAMIC_TENANT.remove();
         String cacheKey = DYNAMIC_TENANT_KEY + ":" + LoginHelper.getUserId();
         RedisUtils.deleteObject(cacheKey);
+        SaHolder.getStorage().delete(cacheKey);
     }
 
     /**
@@ -216,15 +226,6 @@ public class TenantHelper {
             tenantId = LoginHelper.getTenantId();
         }
         return tenantId;
-    }
-
-    private static boolean isLogin() {
-        try {
-            StpUtil.checkLogin();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
     }
 
 }
